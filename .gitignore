@@ -1,0 +1,6 @@
+*.sqlite-shm
+*.sqlite-wal
+
+/target
+
+Cargo.lock
