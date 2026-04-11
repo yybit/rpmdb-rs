@@ -6,9 +6,15 @@ use std::{
 };
 
 use super::rpmtags::*;
+use crate::errors::RpmdbError;
 use anyhow::{anyhow, Context, Result};
 use byteorder::{BigEndian, ByteOrder, ReadBytesExt};
 use serde::Deserialize;
+
+use bincode_reloaded::{
+    config,
+    serde::{decode_from_slice, decode_from_std_read},
+};
 
 // ref. https://github.com/rpm-software-management/rpm/blob/rpm-4.14.3-release/lib/header.c#L121-L122
 const REGION_TAG_COUNT: i32 = mem::size_of::<EntryInfo>() as i32;
@@ -159,7 +165,8 @@ impl Hdrblob {
 
         let mut pe_list = Vec::new();
         for _ in 0..il {
-            let pe: EntryInfo = bincode::deserialize_from(&mut cursor)?;
+            let pe: EntryInfo =
+                decode_from_std_read(&mut cursor, config::legacy()).map_err(RpmdbError::Bincode)?;
             pe_list.push(pe);
         }
 
@@ -282,9 +289,12 @@ impl Hdrblob {
 
         // ref. https://github.com/rpm-software-management/rpm/blob/rpm-4.14.3-release/lib/header.c#L1842
         let region_end = self.data_start + einfo.offset;
-        let trailer: EntryInfo = bincode::deserialize(
+        let trailer: EntryInfo = decode_from_slice(
             &data[region_end as usize..(region_end + REGION_TAG_COUNT) as usize],
-        )?;
+            config::legacy(),
+        )
+        .map_err(RpmdbError::Bincode)?
+        .0;
 
         self.rdl = region_end + REGION_TAG_COUNT - self.data_start;
 
@@ -465,6 +475,7 @@ fn hdrchk_tag(tag: i32) -> bool {
     tag < HEADER_I18NTABLE
 }
 
+#[allow(clippy::absurd_extreme_comparisons)]
 fn hdrchk_type(t: u32) -> bool {
     t < RPM_MIN_TYPE || t > RPM_MAX_TYPE
 }

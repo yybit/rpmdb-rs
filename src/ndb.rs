@@ -10,6 +10,8 @@ use nix::fcntl::flock;
 use nix::fcntl::FlockArg;
 use serde::Deserialize;
 
+use bincode_reloaded::{config, serde::decode_from_std_read};
+
 use crate::{errors::RpmdbError, DBI};
 
 const NDB_SLOT_ENTRIES_PER_PAGE: u32 = 4096 / 16;
@@ -64,7 +66,8 @@ impl Ndb {
 
         let mut reader = BufReader::new(file);
 
-        let ndb_header: NdbHeader = bincode::deserialize_from(&mut reader)?;
+        let ndb_header: NdbHeader =
+            decode_from_std_read(&mut reader, config::legacy()).map_err(RpmdbError::Bincode)?;
 
         if ndb_header.header_magic != NDB_HEADER_MAGIC
             || ndb_header.slot_npages == 0
@@ -81,7 +84,8 @@ impl Ndb {
         let entry_size = ndb_header.slot_npages * NDB_SLOT_ENTRIES_PER_PAGE - 2;
         let mut slots: Vec<NdbSlotEntry> = Vec::with_capacity(entry_size as usize);
         for _ in 0..entry_size {
-            let slot: NdbSlotEntry = bincode::deserialize_from(&mut reader)?;
+            let slot: NdbSlotEntry =
+                decode_from_std_read(&mut reader, config::legacy()).map_err(RpmdbError::Bincode)?;
             slots.push(slot);
         }
 
@@ -105,7 +109,9 @@ impl DBI for Ndb {
             let offset = (slot.blk_offset * NDB_BLOB_HEADER_SIZE) as u64;
             self.reader.seek(SeekFrom::Start(offset))?;
 
-            let ndb_blob_header: NdbBlobHeader = bincode::deserialize_from(&mut self.reader)?;
+            let ndb_blob_header: NdbBlobHeader =
+                decode_from_std_read(&mut self.reader, config::legacy())
+                    .map_err(RpmdbError::Bincode)?;
             if ndb_blob_header.blob_magic != NDB_BLOB_MAGIC {
                 let msg = format!(
                     "unexpected NDB blob Magic for pkg {}: {}",

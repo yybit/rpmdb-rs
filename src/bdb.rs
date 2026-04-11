@@ -3,6 +3,8 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 
+use bincode_reloaded::{config, serde::decode_from_slice};
+
 use crate::errors::RpmdbError;
 use crate::DBI;
 
@@ -59,7 +61,9 @@ impl Bdb {
 
         file.seek(SeekFrom::Start(0))?;
 
-        let hash_metadata: HashMetadataPage = bincode::deserialize(&buffer)?;
+        let hash_metadata: HashMetadataPage = decode_from_slice(&buffer, config::legacy())
+            .map_err(RpmdbError::Bincode)?
+            .0;
         if !VALID_PAGE_SIZES.contains(&hash_metadata.generic.page_size) {
             let msg = format!("invalid page_size {}", hash_metadata.generic.page_size);
             return Err(RpmdbError::ParseBdbFile(msg));
@@ -81,7 +85,9 @@ impl Bdb {
             let mut current_page_buffer = vec![0; page_size];
             self.file.read_exact(&mut current_page_buffer)?;
 
-            let current_page: HashPage = bincode::deserialize(&current_page_buffer)?;
+            let current_page: HashPage = decode_from_slice(&current_page_buffer, config::legacy())
+                .map_err(RpmdbError::Bincode)?
+                .0;
             if current_page.page_type != (PageType::OverflowPageType as u8) {
                 continue;
             }
@@ -113,7 +119,9 @@ impl DBI for Bdb {
 
             let end_of_page_offset = self.file.seek(SeekFrom::Current(0))?;
 
-            let hash_metadata: HashPage = bincode::deserialize(&page_data)?;
+            let hash_metadata: HashPage = decode_from_slice(&page_data, config::legacy())
+                .map_err(RpmdbError::Bincode)?
+                .0;
 
             if hash_metadata.page_type != (PageType::HashUnsortedPageType as u8)
                 && hash_metadata.page_type != (PageType::HashPageType as u8)
@@ -130,7 +138,9 @@ impl DBI for Bdb {
 
                 let i = idx as usize;
                 let entry: HashOffPageEntry =
-                    bincode::deserialize(&page_data[i..i + HASH_OFF_PAGE_SIZE])?;
+                    decode_from_slice(&page_data[i..i + HASH_OFF_PAGE_SIZE], config::legacy())
+                        .map_err(RpmdbError::Bincode)?
+                        .0;
 
                 let value = self.hash_page_value_content(entry)?;
                 values.push(value);

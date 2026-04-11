@@ -11,7 +11,7 @@ pub enum RpmdbError {
     Io(#[from] io::Error),
 
     #[error(transparent)]
-    Bincode(#[from] bincode::Error),
+    Bincode(#[from] bincode_reloaded::error::DecodeError),
 
     #[error("invalid sqlite file")]
     InvalidSqliteFile,
