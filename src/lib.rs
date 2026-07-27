@@ -1,3 +1,31 @@
+//! # rpmdb
+//!
+//! A Rust library for reading RPM package databases, ported from
+//! [go-rpmdb](https://github.com/knqyf263/go-rpmdb).
+//!
+//! The library auto-detects the on-disk format from the file path you provide,
+//! so you can pass any supported database file directly to [`read_packages`].
+//!
+//! ## Supported formats
+//!
+//! | Format | Typical file name |
+//! |--------|-------------------|
+//! | Berkeley DB (BDB) | `Packages` |
+//! | New DB (NDB) | `Packages.db` |
+//! | SQLite3 | `rpmdb.sqlite` |
+//!
+//! ## Example
+//!
+//! ```no_run
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let packages = rpmdb::read_packages("testdata/Packages".parse()?)?;
+//!     for package in packages {
+//!         println!("{} {:?}", package.name, package.provides);
+//!     }
+//!     Ok(())
+//! }
+//! ```
+
 #[allow(dead_code)]
 mod bdb;
 mod entry;
@@ -9,16 +37,27 @@ mod rpmtags;
 
 mod sqlite3;
 
-use errors::RpmdbError;
+pub use errors::RpmdbError;
+pub use package::Package;
+
 use ndb::Ndb;
 use sqlite3::SqliteDB;
 use std::path::PathBuf;
 
 use bdb::Bdb;
 use entry::Hdrblob;
-use package::Package;
 
+/// Low-level trait for reading raw header blobs from an RPM database.
+///
+/// Each `Vec<u8>` element in the returned vector is a single serialised RPM
+/// header blob. Implement this trait to add support for new on-disk formats.
 pub trait DBI {
+    /// Read all package header blobs from the database.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RpmdbError`] if the underlying database file cannot be read or
+    /// if a structural error is encountered during parsing.
     fn read(&mut self) -> Result<Vec<Vec<u8>>, RpmdbError>;
 }
 
@@ -46,6 +85,37 @@ fn open(path: PathBuf) -> Result<Box<dyn DBI>, RpmdbError> {
     Ok(Box::new(Bdb::open(path)?))
 }
 
+/// Read all installed packages from an RPM database file.
+///
+/// The format of the database (BDB, NDB, or SQLite3) is detected automatically
+/// from the file contents.
+///
+/// # Arguments
+///
+/// * `path` – Filesystem path to the RPM database file (e.g. `/var/lib/rpm/Packages`).
+///
+/// # Returns
+///
+/// A [`Vec`] of [`Package`] structs, one per installed package recorded in the database.
+///
+/// # Errors
+///
+/// Returns [`RpmdbError`] if:
+/// - the file cannot be opened or read,
+/// - the file does not match any supported RPM database format, or
+/// - a header blob or package entry cannot be parsed.
+///
+/// # Example
+///
+/// ```no_run
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let packages = rpmdb::read_packages("/var/lib/rpm/Packages".parse()?)?;
+///     for package in packages {
+///         println!("{}-{}-{}.{}", package.name, package.version, package.release, package.arch);
+///     }
+///     Ok(())
+/// }
+/// ```
 pub fn read_packages(path: PathBuf) -> Result<Vec<Package>, RpmdbError> {
     let mut db = open(path)?;
 
