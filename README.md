@@ -18,3 +18,10 @@ for package in packages {
     println!("{} {:?}", package.name, package.provides);
 }
 ```
+
+#### Releasing to crates.io
+
+1. Bump `version` in `Cargo.toml`.
+2. Create and push a version tag in the format `vX.Y.Z`.
+3. Ensure repository secret `CARGO_REGISTRY_TOKEN` is configured.
+4. The `Publish crate` GitHub Actions workflow runs tests, validates packaging, and publishes to crates.io.
